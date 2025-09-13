@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 
 export default function Home() {
@@ -53,9 +53,11 @@ export default function Home() {
           <a href="#" className="text-gray-300 hover:text-white transition-colors">Search</a>
         </nav>
         
-        <button className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-medium transition-colors">
-          Get Started
-        </button>
+        <Link href="/register">
+          <button className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-medium transition-colors">
+            Get Started
+          </button>
+        </Link>
       </header>
 
       {/* Hero Section */}
@@ -75,12 +77,16 @@ export default function Home() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-medium text-lg transition-colors">
-                Start Reading
-              </button>
-              <button className="border border-gray-600 hover:border-gray-500 px-8 py-3 rounded-lg font-medium text-lg transition-colors">
-                Learn More
-              </button>
+              <Link href="/register">
+                <button className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-medium text-lg transition-colors w-full sm:w-auto">
+                  Start Reading
+                </button>
+              </Link>
+              <Link href="/login">
+                <button className="border border-gray-600 hover:border-gray-500 px-8 py-3 rounded-lg font-medium text-lg transition-colors w-full sm:w-auto">
+                  Sign In
+                </button>
+              </Link>
             </div>
             
             <div className="flex items-center gap-8 text-sm">

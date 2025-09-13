@@ -84,7 +84,7 @@ export function useAuth() {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .single() as { data: any; error: any };
 
       if (error) throw error;
 
@@ -187,8 +187,8 @@ export function useAuth() {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
-      const { error } = await supabase
-        .from('profiles')
+      const { error } = await (supabase
+        .from('profiles') as any)
         .update({
           first_name: updates.firstName,
           last_name: updates.lastName,

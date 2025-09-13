@@ -23,13 +23,27 @@ export class EmailService {
 
   async sendEmail({ to, subject, html, text, from = FROM_EMAIL }: EmailOptions) {
     try {
-      const { data, error } = await resend.emails.send({
+      const emailData: Record<string, any> = {
         from,
         to: Array.isArray(to) ? to : [to],
         subject,
-        html: html || text,
-        text
-      });
+      };
+
+      // Add content based on what's provided
+      if (html) {
+        emailData.html = html;
+      } else if (text) {
+        emailData.text = text;
+      } else {
+        throw new Error('Either html or text content must be provided');
+      }
+
+      // Add text version if both are provided
+      if (html && text) {
+        emailData.text = text;
+      }
+
+      const { data, error } = await resend.emails.send(emailData);
 
       if (error) {
         throw new Error(error.message);
@@ -45,69 +59,99 @@ export class EmailService {
     }
   }
 
-  // OTP Verification Email
+  // OTP Verification Email (Branded to match app UI)
   async sendOTPEmail(email: string, otp: string, firstName?: string) {
     const subject = `${APP_NAME} - Email Verification Code`;
+    const text = `Your ${APP_NAME} verification code is ${otp}. It expires in 15 minutes.`;
     const html = `
-      <!DOCTYPE html>
-      <html>
+      <!doctype html>
+      <html lang="en">
         <head>
-          <meta charset="utf-8">
-          <title>Email Verification</title>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Verify your email</title>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #1e293b; color: white; padding: 20px; text-align: center; }
-            .content { padding: 30px; background: #f8fafc; }
-            .otp-code { 
-              font-size: 32px; 
-              font-weight: bold; 
-              color: #3b82f6; 
-              text-align: center; 
-              margin: 20px 0; 
-              padding: 20px;
-              background: white;
-              border-radius: 8px;
-              letter-spacing: 4px;
-            }
-            .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; }
+            body, table, td, a { font-family: Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif !important; }
+            table { border-collapse: collapse !important; }
+            .btn:hover { filter: brightness(1.08); }
+            @media (max-width:600px){ .container{ width:100% !important; } .px{ padding-left:20px !important; padding-right:20px !important; } }
           </style>
         </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>VertoNote</h1>
-              <p>Email Verification Required</p>
-            </div>
-            <div class="content">
-              <h2>Hello ${firstName || 'there'}!</h2>
-              <p>Welcome to VertoNote! Please verify your email address by entering the following code:</p>
-              
-              <div class="otp-code">${otp}</div>
-              
-              <p><strong>Important:</strong></p>
-              <ul>
-                <li>This code will expire in 15 minutes</li>
-                <li>Do not share this code with anyone</li>
-                <li>If you didn't request this, please ignore this email</li>
-              </ul>
-              
-              <p>After verification, your account will be reviewed by our admin team (usually within 24-48 hours).</p>
-            </div>
-            <div class="footer">
-              <p>&copy; 2025 VertoNote. All rights reserved.</p>
-              <p>This is an automated email. Please do not reply.</p>
-            </div>
-          </div>
+        <body style="margin:0;background:#0b1220;">
+          <table role="presentation" width="100%" bgcolor="#0b1220">
+            <tr>
+              <td align="center" style="padding:32px 16px;">
+                <table role="presentation" class="container" width="600" style="width:600px; max-width:600px;">
+                  <tr>
+                    <td class="px" style="padding:24px;">
+                      <table role="presentation" width="100%" style="background:#0f172a;border:1px solid #1f2a44;border-radius:16px;">
+                        <tr>
+                          <td style="padding:32px 28px;">
+                            <table role="presentation" width="100%">
+                              <tr>
+                                <td align="center" style="padding-bottom:12px;">
+                                  <span style="display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;font-size:18px;">Vt</span>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td align="center" style="color:#e5e7eb;font-size:22px;font-weight:700;padding-bottom:6px;">Verify Your Email</td>
+                              </tr>
+                              <tr>
+                                <td align="center" style="color:#9ca3af;font-size:14px;line-height:22px;padding-bottom:18px;">
+                                  Hello ${firstName ? firstName : 'there'}, use this 6-digit code to finish signing up to
+                                  <span style="color:#facc15;font-weight:600;">Verto</span><span style="color:#e5e7eb;font-weight:600;">Note</span>.
+                                </td>
+                              </tr>
+                            </table>
+
+                            <table role="presentation" width="100%">
+                              <tr>
+                                <td align="center" style="padding-bottom:12px;">
+                                  <div style="display:inline-block;background:#0b1220;border:1px solid #1f2a44;border-radius:12px;padding:16px 22px;">
+                                    <div style="font-family:SFMono-Regular,Menlo,Consolas,monospace;font-size:28px;letter-spacing:10px;color:#93c5fd;">
+                                      ${otp}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td align="center" style="color:#94a3b8;font-size:12px;">Code expires in 15 minutes</td>
+                              </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" style="margin-top:18px;">
+                              <tr>
+                                <td align="center" style="color:#94a3b8;font-size:12px;line-height:20px;">
+                                  If you didn't request this, you can safely ignore this email.
+                                </td>
+                              </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" style="margin-top:28px;">
+                              <tr>
+                                <td align="center" style="color:#64748b;font-size:11px;">
+                                  © 2025 VertoNote — All rights reserved.
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </body>
       </html>
     `;
 
-    return this.sendEmail({ to: email, subject, html });
+    return this.sendEmail({ to: email, subject, html, text });
   }
 
   // Account Approval Email
-  async sendApprovalEmail(email: string, firstName: string, approved: boolean) {
+  async sendApprovalEmail(email: string, firstName: string, approved: boolean, rejectionReason?: string) {
     const subject = approved 
       ? `${APP_NAME} - Account Approved! Welcome aboard 🎉`
       : `${APP_NAME} - Account Application Update`;
@@ -154,7 +198,13 @@ export class EmailService {
               </ul>
               
               <div style="text-align: center;">
-                <a href="${APP_URL}/auth/login" class="button">Start Reading Now</a>
+                <a href="${APP_URL}/login" class="button">Sign In to VertoNote</a>
+              </div>
+              
+              <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
+                <p style="margin: 0; color: #1e40af; font-weight: 500;">
+                  🎉 Your VertoNote account is now fully activated! You can now access all features including reading articles, bookmarking content, and engaging with the community.
+                </p>
               </div>
               
               <p>Thank you for joining our community of readers and learners!</p>
@@ -176,6 +226,13 @@ export class EmailService {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background: #ef4444; color: white; padding: 20px; text-align: center; }
             .content { padding: 30px; background: #f8fafc; }
+            .reason-box { 
+              background: #fef2f2; 
+              border-left: 4px solid #ef4444; 
+              padding: 15px; 
+              margin: 20px 0; 
+              border-radius: 4px; 
+            }
             .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; }
           </style>
         </head>
@@ -188,17 +245,33 @@ export class EmailService {
               <h2>Hello ${firstName},</h2>
               <p>Thank you for your interest in VertoNote. Unfortunately, we're unable to approve your account at this time.</p>
               
-              <p>This could be due to:</p>
+              ${rejectionReason ? `
+                <div class="reason-box">
+                  <h3 style="margin-top: 0; color: #dc2626;">Reason for Rejection:</h3>
+                  <p style="margin-bottom: 0; color: #374151;">${rejectionReason}</p>
+                </div>
+              ` : `
+                <p>This could be due to:</p>
+                <ul>
+                  <li>Incomplete profile information</li>
+                  <li>Current capacity limitations</li>
+                  <li>Other administrative reasons</li>
+                </ul>
+              `}
+              
+              <p><strong>What you can do:</strong></p>
               <ul>
-                <li>Incomplete profile information</li>
-                <li>Current capacity limitations</li>
-                <li>Other administrative reasons</li>
+                <li>Review and update your profile information</li>
+                <li>Ensure all required fields are completed</li>
+                <li>Apply again in the future</li>
+                <li>Contact our support team if you have questions</li>
               </ul>
               
-              <p>You're welcome to apply again in the future. If you have questions, please contact our support team.</p>
+              <p>We appreciate your understanding and interest in joining the VertoNote community.</p>
             </div>
             <div class="footer">
               <p>&copy; 2025 VertoNote. All rights reserved.</p>
+              <p>If you have questions, please contact us at support@vertonote.com</p>
             </div>
           </div>
         </body>

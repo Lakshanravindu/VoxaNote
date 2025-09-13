@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthStore>()(
       // Initial state
       user: null,
       isAuthenticated: false,
-      loading: false,
+      loading: true, // Start with loading true to handle hydration
       error: null,
 
       // Actions
@@ -78,7 +78,13 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({ 
         user: state.user, 
         isAuthenticated: state.isAuthenticated 
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Set loading to false after rehydration
+        if (state) {
+          state.loading = false;
+        }
+      }
     }
   )
 );

@@ -11,7 +11,7 @@ CREATE TABLE profiles (
   country TEXT,
   default_language TEXT DEFAULT 'en' CHECK (default_language IN ('en', 'si')),
   role TEXT DEFAULT 'reader' CHECK (role IN ('reader', 'writer', 'admin')),
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'suspended', 'banned')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'email_verified', 'approved', 'suspended', 'banned')),
   points INTEGER DEFAULT 0,
   level TEXT DEFAULT 'rookie' CHECK (level IN ('rookie', 'active', 'dedicated', 'expert', 'master')),
   reading_streak INTEGER DEFAULT 0,
@@ -31,6 +31,9 @@ CREATE TABLE email_verifications (
   email TEXT NOT NULL CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
   otp_code TEXT NOT NULL,
   expires_at TIMESTAMP NOT NULL,
+  attempts INTEGER DEFAULT 0,
+  is_verified BOOLEAN DEFAULT FALSE,
+  is_used BOOLEAN DEFAULT FALSE,
   verified_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -657,6 +660,168 @@ BEGIN
   WHERE expires_at < NOW() AND sync_status = 'downloaded';
 END;
 $$ LANGUAGE plpgsql;
+
+-- OTP System Functions
+-- Function to generate OTP
+CREATE OR REPLACE FUNCTION generate_otp()
+RETURNS TEXT AS $$
+BEGIN
+    RETURN LPAD(FLOOR(RANDOM() * 1000000)::TEXT, 6, '0');
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to create OTP verification with resend restriction
+CREATE OR REPLACE FUNCTION create_otp_verification(
+    user_email TEXT,
+    user_id UUID
+)
+RETURNS TABLE(otp_code TEXT, expires_at TIMESTAMP, can_resend BOOLEAN, message TEXT) AS $$
+DECLARE
+    new_otp TEXT;
+    expiry_time TIMESTAMP;
+    last_otp_time TIMESTAMP;
+    time_diff INTERVAL;
+BEGIN
+    -- Check if there's a recent OTP (within 15 minutes)
+    SELECT created_at INTO last_otp_time
+    FROM email_verifications 
+    WHERE email = user_email 
+    ORDER BY created_at DESC 
+    LIMIT 1;
+    
+    -- If there's a recent OTP, check if 15 minutes have passed
+    IF last_otp_time IS NOT NULL THEN
+        time_diff := NOW() - last_otp_time;
+        
+        IF time_diff < INTERVAL '5 minutes' THEN
+            -- Return error - too soon to resend
+            RETURN QUERY SELECT ''::TEXT, NOW()::TIMESTAMP, FALSE, 
+                'Please wait 5 minutes before requesting a new OTP'::TEXT;
+            RETURN;
+        END IF;
+    END IF;
+    
+    -- Generate new OTP
+    new_otp := generate_otp();
+    expiry_time := NOW() + INTERVAL '5 minutes';
+    
+    -- Invalidate any existing OTPs for this email
+    UPDATE email_verifications 
+    SET is_used = TRUE 
+    WHERE email = user_email AND is_used = FALSE;
+    
+    -- Insert new OTP
+    INSERT INTO email_verifications (user_id, email, otp_code, expires_at)
+    VALUES (user_id, user_email, new_otp, expiry_time);
+    
+    -- Return the OTP and expiry time
+    RETURN QUERY SELECT new_otp, expiry_time, TRUE, 'OTP created successfully'::TEXT;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to verify OTP
+CREATE OR REPLACE FUNCTION verify_otp(
+    user_email TEXT,
+    provided_otp TEXT
+)
+RETURNS TABLE(success BOOLEAN, message TEXT, attempts_left INTEGER) AS $$
+DECLARE
+    otp_record RECORD;
+    max_attempts INTEGER := 3;
+BEGIN
+    -- Get the latest OTP for this email
+    SELECT * INTO otp_record
+    FROM email_verifications 
+    WHERE email = user_email 
+    AND is_used = FALSE 
+    AND expires_at > NOW()
+    ORDER BY created_at DESC 
+    LIMIT 1;
+    
+    -- Check if OTP exists
+    IF otp_record IS NULL THEN
+        RETURN QUERY SELECT FALSE, 'OTP not found or expired'::TEXT, 0;
+        RETURN;
+    END IF;
+    
+    -- Check if max attempts reached
+    IF otp_record.attempts >= max_attempts THEN
+        -- Mark as used
+        UPDATE email_verifications 
+        SET is_used = TRUE 
+        WHERE id = otp_record.id;
+        
+        RETURN QUERY SELECT FALSE, 'Maximum attempts exceeded'::TEXT, 0;
+        RETURN;
+    END IF;
+    
+    -- Increment attempts
+    UPDATE email_verifications 
+    SET attempts = attempts + 1 
+    WHERE id = otp_record.id;
+    
+    -- Check if OTP matches
+    IF otp_record.otp_code = provided_otp THEN
+        -- Mark as verified and used
+        UPDATE email_verifications 
+        SET is_verified = TRUE, is_used = TRUE, verified_at = NOW()
+        WHERE id = otp_record.id;
+        
+        -- Update user profile status to email_verified (waiting admin approval)
+        UPDATE profiles 
+        SET status = 'email_verified'
+        WHERE id = otp_record.user_id;
+        
+        RETURN QUERY SELECT TRUE, 'OTP verified successfully'::TEXT, 0;
+    ELSE
+        RETURN QUERY SELECT FALSE, 'Invalid OTP'::TEXT, (max_attempts - otp_record.attempts - 1);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to clean up expired OTPs
+CREATE OR REPLACE FUNCTION cleanup_expired_otps()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM email_verifications 
+    WHERE expires_at < NOW() 
+    AND is_used = FALSE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Database trigger for admin approval notifications
+-- This trigger will be called when a user's status changes to 'approved'
+CREATE OR REPLACE FUNCTION notify_user_approval()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if status changed from 'email_verified' to 'approved'
+    IF OLD.status = 'email_verified' AND NEW.status = 'approved' THEN
+        -- Insert a notification record that can be picked up by the application
+        INSERT INTO notifications (
+            user_id,
+            title,
+            message,
+            notification_type,
+            action_url
+        ) VALUES (
+            NEW.id,
+            'Account Approved! 🎉',
+            'Your VertoNote account has been approved. You can now sign in and start reading.',
+            'admin',
+            '/login'
+        );
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger
+DROP TRIGGER IF EXISTS user_approval_trigger ON profiles;
+CREATE TRIGGER user_approval_trigger
+    AFTER UPDATE ON profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION notify_user_approval();
 
 -- Enable Row Level Security on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;

@@ -1,9 +1,10 @@
 // Environment Variables Configuration
 
 // Supabase Configuration
-export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Support both NEXT_PUBLIC_* (browser) and server-only names as fallbacks
+export const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '') as string;
+export const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '') as string;
+export const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '') as string;
 
 // Email Service
 export const RESEND_API_KEY = process.env.RESEND_API_KEY!;
@@ -12,8 +13,8 @@ export const RESEND_API_KEY = process.env.RESEND_API_KEY!;
 export const NEXTAUTH_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000';
 export const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET!;
 
-// Email Configuration (Development - no domain required)
-export const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+// Email Configuration - Use verified domain
+export const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@lakshanweerasingha.com';
 export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'lakatech99@gmail.com';
 
 // Application Settings
@@ -41,22 +42,24 @@ export const IS_DEVELOPMENT = NODE_ENV === 'development';
 // Validation function to check required environment variables
 export function validateEnvVars() {
   const requiredVars = [
-    'NEXT_PUBLIC_SUPABASE_URL',
-    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-    'SUPABASE_SERVICE_ROLE_KEY'
+    // Accept either public or server-only names for URL and anon key
+    SUPABASE_URL ? null : 'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL',
+    SUPABASE_ANON_KEY ? null : 'NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY',
+    // Make SUPABASE_SERVICE_ROLE_KEY optional for development
+    SUPABASE_SERVICE_ROLE_KEY ? null : null
   ];
 
-  const missingVars = requiredVars.filter(varName => !process.env[varName]);
+  const missingVars = requiredVars.filter((name) => typeof name === 'string') as string[];
 
   if (missingVars.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missingVars.join(', ')}\n` +
-      'Please check your .env.local file and make sure all required variables are set.'
+    console.warn(
+      `Missing environment variables: ${missingVars.join(', ')}\n` +
+      'Using simulation mode for development. For production, please set all required variables.'
     );
   }
 }
 
-// Call validation in development
+// Call validation in development (server only) - but don't throw errors
 if (IS_DEVELOPMENT && typeof window === 'undefined') {
   validateEnvVars();
 }
